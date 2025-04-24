@@ -474,8 +474,6 @@ if ($network == 'BTC') {
     if ($dashboard_config['show_fees']) {
         $getfees = call_rpc_cached('get_fee_estimate', [], $dashboard_config, $url_schema, $ttlOverrides);
 
-        print_r($getfees);
-
         if ($getfees) {
             $ratename = "per kB";
             $fastfees = number_format(($getfees['fees'][3] ?? 0) / 1000000000000, 12) . " XMR";
