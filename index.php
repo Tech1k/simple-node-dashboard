@@ -1,17 +1,17 @@
 <?php
 // Configuration
 $dashboard_config = [
-    'network' => 'CHANGE_ME', // Supported values: BTC, LTC, or XMR
-    'node_ip' => 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
-    'rpc_port' => 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
-    'rpc_user' => 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
-    'rpc_pass' => 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
-    'show_node_info' => true,
-    'show_blockchain' => true,
-    'show_mempool' => true,
-    'show_mining' => true,
-    'show_transactions' => true,
-    'show_fees' => true,
+    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // Supported values: BTC, LTC, or XMR
+    'node_ip' => getenv('NODE_IP') ?: 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
+    'rpc_port' => getenv('RPC_PORT') ?: 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
+    'rpc_user' => getenv('RPC_USER') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
+    'rpc_pass' => getenv('RPC_PASS') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
+    'show_node_info' => filter_var(getenv('SHOW_NODE_INFO') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'show_blockchain' => filter_var(getenv('SHOW_BLOCKCHAIN') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'show_mempool' => filter_var(getenv('SHOW_MEMPOOL') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'show_mining' => filter_var(getenv('SHOW_MINING') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'show_transactions' => filter_var(getenv('SHOW_TRANSACTIONS') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+    'show_fees' => filter_var(getenv('SHOW_FEES') ?: 'true', FILTER_VALIDATE_BOOLEAN),
 ];
 
 $network = strtoupper($dashboard_config['network']);
