@@ -5,7 +5,6 @@ A lightweight, self-hosted dashboard that displays information from your Bitcoin
 
 ## Demos
 
-- [Bitcoin Node Dashboard](https://btc.librenode.com/dashboard)
 - [Litecoin Node Dashboard](https://ltc.librenode.com/dashboard)
 - [Monero Node Dashboard](https://xmr.librenode.com/dashboard)
 
