@@ -12,11 +12,15 @@ $dashboard_config = [
     'show_mining' => true,
     'show_transactions' => true,
     'show_fees' => true,
+    'theme' => 'dark', // Default theme: dark, light, nord, solarized, or dracula
+    'show_theme_switcher' => true, // Set false to lock the theme above and hide the dropdown
 ];
 
 $network = strtoupper($dashboard_config['network']);
 $rpc_user = $dashboard_config['rpc_user'];
 $rpc_password = $dashboard_config['rpc_pass'];
+$theme = $dashboard_config['theme'] ?? 'dark';
+$show_theme_switcher = $dashboard_config['show_theme_switcher'] ?? true;
 
 $errors = [];
 
@@ -130,7 +134,7 @@ function call_rpc_cached($method, $params, $dashboard_config, $url_schema, $ttlO
     $result = call_rpc($method, $params, $dashboard_config, $url_schema);
 
     if ($result === null) {
-        return "Error, see error message below";
+        return null;
     }
 
     $cacheData[$cacheKey] = [
@@ -140,6 +144,30 @@ function call_rpc_cached($method, $params, $dashboard_config, $url_schema, $ttlO
 
     file_put_contents($cacheFile, json_encode($cacheData));
     return $result;
+}
+
+
+// Format a byte count as a human-readable size (handles 0 safely)
+function format_bytes($bytes) {
+    $bytes = (float) $bytes;
+    if ($bytes <= 0) {
+        return "0 Bytes";
+    }
+    $units = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    $unit = min(max((int) floor(log($bytes, 1024)), 0), count($units) - 1);
+    return number_format($bytes / (1024 ** $unit), 2) . " " . $units[$unit];
+}
+
+
+// Format a hashes-per-second value as a human-readable rate (handles 0 safely)
+function format_hashrate($hashps) {
+    $hashps = (float) $hashps;
+    if ($hashps <= 0) {
+        return "0 H/s";
+    }
+    $units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
+    $unit = min(max((int) floor(log($hashps, 1000)), 0), count($units) - 1);
+    return number_format($hashps / (1000 ** $unit), 2) . " " . $units[$unit];
 }
 
 
@@ -160,7 +188,7 @@ if ($network == 'BTC') {
         $blockinfo = call_rpc_cached('getblockchaininfo', [], $dashboard_config, $url_schema, $ttlOverrides);
         
         if ($blockinfo && is_array($blockinfo)) {
-            $blockcount   = number_format($blockinfo['blocks'] ?? 0);
+            $blockcount   = $blockinfo['blocks'] ?? 0;
             $headercount  = number_format($blockinfo['headers'] ?? 0);
             $syncprogress = ($blockinfo['verificationprogress'] >= 0.99999) ? '100%' : round($blockinfo['verificationprogress'] * 100) . '%';
             $chainsize = round(($blockinfo['size_on_disk'] ?? 0) / 1000000000, 2) . " GB";
@@ -187,7 +215,7 @@ if ($network == 'BTC') {
     
         if ($mempoolinfo && is_array($mempoolinfo)) {
             $mempooltxns = number_format($mempoolinfo['size'] ?? 0);
-            $mempoolsize = number_format($mempoolinfo['bytes'] / (1024 ** (floor(log($mempoolinfo['bytes'], 1024)))) , 2) . " " . ['Bytes', 'KB', 'MB', 'GB'][floor(log($mempoolinfo['bytes'], 1024))] ?? 0;
+            $mempoolsize = format_bytes($mempoolinfo['bytes'] ?? 0);
             $totalfees   = sprintf('%.8f', $mempoolinfo['total_fee'] ?? 0) . " BTC";
         } else {
             $errors[] = 'Failed to fetch `getmempoolinfo`. RPC call returned null or invalid.';
@@ -199,9 +227,7 @@ if ($network == 'BTC') {
     
         if ($mininginfo && is_array($mininginfo) && $blockinfo && is_array($blockinfo)) {
             $difficulty = number_format($blockinfo['difficulty'] ?? 0);
-            $hashrate = number_format(
-                ($mininginfo['networkhashps'] ?? 0) / (10 ** (3 * floor(log(($mininginfo['networkhashps'] ?? 1), 1000))))
-                , 2) . " " . ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'][min(floor(log(($mininginfo['networkhashps'] ?? 1), 1000)), 5)];
+            $hashrate = format_hashrate($mininginfo['networkhashps'] ?? 0);
     
             $blockcount = $blockinfo['blocks'] ?? 0;
     
@@ -278,7 +304,7 @@ if ($network == 'BTC') {
         $blockinfo = call_rpc_cached('getblockchaininfo', [], $dashboard_config, $url_schema, $ttlOverrides);
         
         if ($blockinfo && is_array($blockinfo)) {
-            $blockcount   = number_format($blockinfo['blocks'] ?? 0);
+            $blockcount   = $blockinfo['blocks'] ?? 0;
             $headercount  = number_format($blockinfo['headers'] ?? 0);
             $syncprogress = ($blockinfo['verificationprogress'] >= 0.99999) ? '100%' : round($blockinfo['verificationprogress'] * 100) . '%';
             $chainsize    = round(($blockinfo['size_on_disk'] ?? 0) / 1000000000, 2) . " GB";
@@ -305,7 +331,7 @@ if ($network == 'BTC') {
     
         if ($mempoolinfo && is_array($mempoolinfo)) {
             $mempooltxns = number_format($mempoolinfo['size'] ?? 0);
-            $mempoolsize = number_format($mempoolinfo['bytes'] / (1024 ** (floor(log($mempoolinfo['bytes'], 1024)))) , 2) . " " . ['Bytes', 'KB', 'MB', 'GB'][floor(log($mempoolinfo['bytes'], 1024))] ?? 0;
+            $mempoolsize = format_bytes($mempoolinfo['bytes'] ?? 0);
         } else {
             $errors[] = 'Failed to fetch `getmempoolinfo`. RPC call returned null or invalid.';
         }
@@ -316,9 +342,7 @@ if ($network == 'BTC') {
     
         if ($mininginfo && is_array($mininginfo) && $blockinfo && is_array($blockinfo)) {
             $difficulty = number_format($blockinfo['difficulty'] ?? 0);
-            $hashrate = number_format(
-                ($mininginfo['networkhashps'] ?? 0) / (10 ** (3 * floor(log(($mininginfo['networkhashps'] ?? 1), 1000))))
-                , 2) . " " . ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'][min(floor(log(($mininginfo['networkhashps'] ?? 1), 1000)), 5)];
+            $hashrate = format_hashrate($mininginfo['networkhashps'] ?? 0);
 
             $blockcount = $blockinfo['blocks'] ?? 0;
     
@@ -408,10 +432,10 @@ if ($network == 'BTC') {
         $getinfo = call_rpc_cached('get_info', [], $dashboard_config, $url_schema, $ttlOverrides);
 
         if ($block_count && $last_block_header) {
-            $blockcount   = number_format($block_count['count'] ?? 0);
+            $blockcount   = $block_count['count'] ?? 0;
             $syncprogress = $getinfo['synchronized'] ? 'Yes' : 'No';
             $chainsize    = round(($getinfo['database_size'] ?? 0) / 1000000000, 2) . " GB";
-            $headercount  = $blockcount;
+            $headercount  = number_format($blockcount);
         } else {
             $errors[] = 'Failed to fetch Monero blockchain info.';
         }
@@ -433,8 +457,8 @@ if ($network == 'BTC') {
         $mempoolinfo = call_rpc_cached('get_transaction_pool_stats', [], $dashboard_config, $url_schema, $ttlOverrides);
         if ($mempoolinfo) {
             $mempooltxns = number_format($mempoolinfo['pool_stats']['txs_total'] ?? 0);
-            $mempoolsize = number_format($mempoolinfo['pool_stats']['bytes_total'] / (1024 ** (floor(log($mempoolinfo['pool_stats']['bytes_total'], 1024)))) , 2) . " " . ['Bytes', 'KB', 'MB', 'GB'][floor(log($mempoolinfo['pool_stats']['bytes_total'], 1024))] ?? 0;
-            $totalfees   = number_format($mempoolinfo['fee_total'] ?? 0 / 1e12, 6) . " XMR";
+            $mempoolsize = format_bytes($mempoolinfo['pool_stats']['bytes_total'] ?? 0);
+            $totalfees   = number_format(($mempoolinfo['pool_stats']['fee_total'] ?? 0) / 1e12, 6) . " XMR";
         } else {
             $errors[] = 'Failed to fetch Monero mempool info.';
         }
@@ -444,7 +468,7 @@ if ($network == 'BTC') {
         $getinfo = call_rpc_cached('get_info', [], $dashboard_config, $url_schema, $ttlOverrides);
         if ($getinfo) {
             $difficulty      = number_format($getinfo['difficulty'] ?? 0);
-            $hashrate        = number_format(($getinfo['difficulty'] ?? 0) / 120 / (10 ** (3 * ($i = min(floor(log(max(($getinfo['difficulty'] ?? 1) / 120, 1), 1000)), 5)))), 2) . " " . ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'][$i];
+            $hashrate        = format_hashrate(($getinfo['difficulty'] ?? 0) / 120);
             $blockcount      = $getinfo['height'] ?? 0;
         } else {
             $errors[] = 'Failed to fetch Monero mining info.';
@@ -464,8 +488,8 @@ if ($network == 'BTC') {
 
         $mininginfo = call_rpc_cached('get_miner_data', [], $dashboard_config, $url_schema, $ttlOverrides);
 
-        if ($getinfo) {
-            $currentsupply   = number_format($mininginfo['already_generated_coins'] / 1000000000000 ?? 0) . " XMR";
+        if ($mininginfo) {
+            $currentsupply   = number_format(($mininginfo['already_generated_coins'] ?? 0) / 1000000000000) . " XMR";
         } else {
            $errors[] = 'Failed to fetch Monero mining info.';
         }
@@ -491,7 +515,7 @@ if ($network == 'BTC') {
 
 
 <!DOCTYPE html>
-<html>
+<html data-theme="<?= htmlspecialchars($theme) ?>">
     <head>
         <meta charset="utf-8">
         <title><?= $coin ?> Node Dashboard</title>
@@ -499,18 +523,95 @@ if ($network == 'BTC') {
         <meta http-equiv="refresh" content="60">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
+            /* Theme palettes, applied via the data-theme attribute on <html>.
+               The default (no attribute) matches the dark theme. */
+            :root,
+            html[data-theme="dark"] {
+                --bg: #0e0e0e;
+                --text: #cfcfcf;
+                --section-bg: #121212;
+                --section-border: #222;
+                --title-color: #fff;
+                --title-border: #333;
+                --label-color: #aaa;
+                --row-border: #2a2a2a;
+                --header-bg: #1a1a1a;
+                --header-text: #fff;
+                --link: #6ea8fe;
+            }
+
+            html[data-theme="light"] {
+                --bg: #f4f4f4;
+                --text: #1c1c1c;
+                --section-bg: #ffffff;
+                --section-border: #d8d8d8;
+                --title-color: #000;
+                --title-border: #cccccc;
+                --label-color: #555;
+                --row-border: #e2e2e2;
+                --header-bg: #ffffff;
+                --header-text: #000;
+                --link: #0d6efd;
+            }
+
+            html[data-theme="nord"] {
+                --bg: #2e3440;
+                --text: #d8dee9;
+                --section-bg: #3b4252;
+                --section-border: #434c5e;
+                --title-color: #eceff4;
+                --title-border: #4c566a;
+                --label-color: #a0aab9;
+                --row-border: #434c5e;
+                --header-bg: #3b4252;
+                --header-text: #eceff4;
+                --link: #88c0d0;
+            }
+
+            html[data-theme="solarized"] {
+                --bg: #002b36;
+                --text: #93a1a1;
+                --section-bg: #073642;
+                --section-border: #0a4250;
+                --title-color: #fdf6e3;
+                --title-border: #586e75;
+                --label-color: #839496;
+                --row-border: #0a4250;
+                --header-bg: #073642;
+                --header-text: #fdf6e3;
+                --link: #2aa198;
+            }
+
+            html[data-theme="dracula"] {
+                --bg: #282a36;
+                --text: #f8f8f2;
+                --section-bg: #343746;
+                --section-border: #44475a;
+                --title-color: #ff79c6;
+                --title-border: #44475a;
+                --label-color: #bd93f9;
+                --row-border: #44475a;
+                --header-bg: #343746;
+                --header-text: #f8f8f2;
+                --link: #8be9fd;
+            }
+
             body {
                 margin: 0;
-                background: #0e0e0e;
-                color: #cfcfcf;
+                background: var(--bg);
+                color: var(--text);
                 font-family: 'Courier New', monospace;
                 font-size: 18px;
                 padding: 1rem;
             }
 
+            a {
+                color: var(--link);
+            }
+
             .section {
-                background: #121212;
-                border: 1px solid #222;
+                background: var(--section-bg);
+                border: 1px solid var(--section-border);
                 padding: 0.5rem 1rem;
                 box-sizing: border-box;
                 flex: 0 0 calc(33.333% - 1rem); /* limit to 3 per row */
@@ -543,9 +644,9 @@ if ($network == 'BTC') {
 
             .section-title {
                 font-weight: bold;
-                color: #fff;
+                color: var(--title-color);
                 margin-bottom: 0.5rem;
-                border-bottom: 1px solid #333;
+                border-bottom: 1px solid var(--title-border);
                 padding-bottom: 0.25rem;
             }
 
@@ -553,11 +654,18 @@ if ($network == 'BTC') {
                 display: flex;
                 justify-content: space-between;
                 padding: 0.15rem 0;
-                border-bottom: 1px dotted #2a2a2a;
+                border-bottom: 1px dotted var(--row-border);
             }
 
             .stat-row span:first-child {
-                color: #aaa;
+                color: var(--label-color);
+            }
+
+            /* Stats with a tooltip explanation get a help cursor and a subtle hint underline */
+            .stat-row span[title] {
+                cursor: help;
+                text-decoration: underline dotted;
+                text-underline-offset: 3px;
             }
 
             .dashboard-header {
@@ -565,8 +673,8 @@ if ($network == 'BTC') {
                 top: 0;
                 left: 0;
                 width: 100%;
-                background-color: #1a1a1a;
-                color: #fff;
+                background-color: var(--header-bg);
+                color: var(--header-text);
                 padding: 8px 12px;
                 font-size: 15px;
                 font-weight: bold;
@@ -580,6 +688,11 @@ if ($network == 'BTC') {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 1rem;
+                margin-top: 115px;
+            }
+
+            /* Without the switcher row the header is shorter, so reclaim the space */
+            .compact-dashboard.no-switcher {
                 margin-top: 80px;
             }
 
@@ -588,56 +701,114 @@ if ($network == 'BTC') {
                 font-size: 18px;
             }
 
+            .theme-switcher {
+                margin-top: 6px;
+                font-size: 13px;
+                font-weight: normal;
+            }
+
+            .theme-switcher select {
+                background: var(--section-bg);
+                color: var(--text);
+                border: 1px solid var(--section-border);
+                font-family: inherit;
+                font-size: 13px;
+                padding: 2px 6px;
+                border-radius: 3px;
+            }
+
             .dashboard-footer {
-                color: #fff;
+                color: var(--header-text);
                 font-size: 16px;
                 z-index: 1000;
             }
         </style>
+        <?php if ($show_theme_switcher): ?>
+        <script>
+            // Apply the visitor's saved theme before paint to avoid a flash of the
+            // server-rendered default. The page auto-refreshes every 60s, so this
+            // runs on every load. Only active when the switcher is enabled — with it
+            // hidden, the configured theme is final and localStorage is ignored.
+            (function () {
+                try {
+                    var saved = localStorage.getItem('snd-theme');
+                    if (saved) {
+                        document.documentElement.setAttribute('data-theme', saved);
+                    }
+                } catch (e) {}
+            })();
+        </script>
+        <?php endif; ?>
     </head>
     <body>
         <div class="dashboard-header">
         <span class="header-title"><?= $coin ?> Node Dashboard</span>
             <br/>
             <span>Updated:</span> <?= date("H:i:s") ?> UTC — <span>Auto-refresh: 60s</span>
+            <?php if ($show_theme_switcher): ?>
+            <div class="theme-switcher">
+                Theme:
+                <select id="theme-select" aria-label="Select theme" onchange="setTheme(this.value)">
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                    <option value="nord">Nord</option>
+                    <option value="solarized">Solarized</option>
+                    <option value="dracula">Dracula</option>
+                </select>
+            </div>
+            <?php endif; ?>
         </div>
+        <?php if ($show_theme_switcher): ?>
+        <script>
+            function setTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                try { localStorage.setItem('snd-theme', theme); } catch (e) {}
+            }
+            // Reflect the currently active theme in the dropdown on load.
+            (function () {
+                var current = document.documentElement.getAttribute('data-theme') || 'dark';
+                var select = document.getElementById('theme-select');
+                if (select) select.value = current;
+            })();
+        </script>
+        <?php endif; ?>
 
-        <div class="compact-dashboard">
+        <div class="compact-dashboard<?= $show_theme_switcher ? '' : ' no-switcher' ?>">
 
         <?php if ($dashboard_config['show_node_info']): ?>
             <div class="section">
                 <div class="section-title">Node Info</div>
-                <div class="stat-row"><span>Version</span><span><?= $nodeversion ?></span></div>
-                <div class="stat-row"><span>Chain</span><span><?= $activechain ?></span></div>
+                <div class="stat-row"><span title="The version of the node software your node is running.">Version</span><span><?= $nodeversion ?></span></div>
+                <div class="stat-row"><span title="Which network this node is on (e.g. mainnet, testnet).">Chain</span><span><?= $activechain ?></span></div>
                 <?php if ($network !== 'XMR'): ?>
-                <div class="stat-row"><span>Pruned</span><span><?= $ispruned ?></span></div>
+                <div class="stat-row"><span title="Whether the node deletes old block data to save disk space.">Pruned</span><span><?= $ispruned ?></span></div>
                 <?php endif; ?>
-                <div class="stat-row"><span>Connections</span><span><?= $connections ?></span></div>
+                <div class="stat-row"><span title="Number of other nodes (peers) this node is connected to.">Connections</span><span><?= $connections ?></span></div>
             </div>
         <?php endif; ?>
 
         <?php if ($dashboard_config['show_blockchain']): ?>
             <div class="section">
                 <div class="section-title">Blockchain</div>
-                <div class="stat-row"><span>Block Height</span><span><?= number_format($blockcount) ?></span></div>
-                <div class="stat-row"><span>Block Headers</span><span><?= $headercount?></span></div>
+                <div class="stat-row"><span title="The number of blocks this node has validated and stored.">Block Height</span><span><?= number_format($blockcount) ?></span></div>
+                <div class="stat-row"><span title="The number of block headers the node is aware of. Higher than block height while still syncing.">Block Headers</span><span><?= $headercount?></span></div>
                 <?php if ($network !== 'XMR'): ?>
-                <div class="stat-row"><span>Sync Progress</span><span><?= $syncprogress ?></span></div>
+                <div class="stat-row"><span title="How far the node has progressed verifying the blockchain. 100% means fully synced.">Sync Progress</span><span><?= $syncprogress ?></span></div>
                 <?php endif; ?>
                 <?php if ($network == 'XMR'): ?>
-                <div class="stat-row"><span>Synced</span><span><?= $syncprogress ?></span></div>
+                <div class="stat-row"><span title="Whether the node is fully synced with the network.">Synced</span><span><?= $syncprogress ?></span></div>
                 <?php endif; ?>
-                <div class="stat-row"><span>Chain Size</span><span><?= $chainsize ?></span></div>
+                <div class="stat-row"><span title="Disk space currently used by the blockchain data.">Chain Size</span><span><?= $chainsize ?></span></div>
             </div>
         <?php endif; ?>
 
         <?php if ($dashboard_config['show_mempool']): ?>
             <div class="section">
                 <div class="section-title">Mempool</div>
-                <div class="stat-row"><span>Pending TX Count</span><span><?= $mempooltxns ?></span></div>
-                <div class="stat-row"><span>Total Size</span><span><?= $mempoolsize ?></span></div>
-                <?php if ($network == 'BTC'): ?>
-                <div class="stat-row"><span>Total Fees</span><span><?= $totalfees ?></span></div>
+                <div class="stat-row"><span title="Unconfirmed transactions waiting in the mempool to be included in a block.">Pending TX Count</span><span><?= $mempooltxns ?></span></div>
+                <div class="stat-row"><span title="Total size of all unconfirmed transactions currently in the mempool.">Total Size</span><span><?= $mempoolsize ?></span></div>
+                <?php if ($network == 'BTC' || $network == 'XMR'): ?>
+                <div class="stat-row"><span title="Combined fees of all unconfirmed transactions in the mempool.">Total Fees</span><span><?= $totalfees ?></span></div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -645,12 +816,12 @@ if ($network == 'BTC') {
         <?php if ($dashboard_config['show_mining']): ?>
             <div class="section">
                 <div class="section-title">Mining</div>
-                <div class="stat-row"><span>Difficulty</span><span><?= $difficulty ?></span></div>
-                <div class="stat-row"><span>Hash Rate</span><span><?= $hashrate ?></span></div>
+                <div class="stat-row"><span title="A measure of how hard it is to mine a new block. Adjusts to keep block times steady.">Difficulty</span><span><?= $difficulty ?></span></div>
+                <div class="stat-row"><span title="Estimated total computing power miners are dedicating to the network.">Hash Rate</span><span><?= $hashrate ?></span></div>
                 <?php if ($network !== "XMR"): ?>
-                <div class="stat-row"><span>Blocks till retarget</span><span><?= $retarget ?></span></div>
-                <div class="stat-row"><span>Blocks till halving</span><span><?= $nexthalving ?></span></div>
-                <div class="stat-row"><span>Block Reward</span><span><?= $subsidy ?></span></div>
+                <div class="stat-row"><span title="Blocks remaining until the next mining difficulty adjustment (every 2016 blocks).">Blocks till retarget</span><span><?= $retarget ?></span></div>
+                <div class="stat-row"><span title="Blocks remaining until the next halving, when the block reward is cut in half.">Blocks till halving</span><span><?= $nexthalving ?></span></div>
+                <div class="stat-row"><span title="The amount of newly minted coin paid to a miner for finding a block.">Block Reward</span><span><?= $subsidy ?></span></div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -658,27 +829,27 @@ if ($network == 'BTC') {
         <?php if ($dashboard_config['show_transactions']): ?>
             <div class="section">
                 <div class="section-title">Transactions</div>
-                <div class="stat-row"><span>Total Transactions</span><span><?= $totaltxns ?></span></div>
-                <div class="stat-row"><span>Current Supply</span><span><?= $currentsupply ?></span></div>
+                <div class="stat-row"><span title="The all-time total number of transactions recorded on the blockchain.">Total Transactions</span><span><?= $totaltxns ?></span></div>
+                <div class="stat-row"><span title="The total amount of coin mined into existence so far.">Current Supply</span><span><?= $currentsupply ?></span></div>
                 <?php if ($network !== "XMR"): ?>
-                <div class="stat-row"><span>Average tx/s (30-days)</span><span><?= $averagetxns ?>%</span></div>
-                <div class="stat-row"><span>30-day transactions</span><span><?= $monthlytxns ?></span></div>
+                <div class="stat-row"><span title="Average number of transactions per second over the last 30 days.">Average tx/s (30-days)</span><span><?= $averagetxns ?></span></div>
+                <div class="stat-row"><span title="Number of transactions confirmed in the last 30 days.">30-day transactions</span><span><?= $monthlytxns ?></span></div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
 
-        <?php if ($dashboard_config['show_transactions']): ?>
+        <?php if ($dashboard_config['show_fees']): ?>
             <div class="section">
                 <div class="section-title">Transaction Feerates (<?= $ratename ?>)</div>
                 <?php if ($network !== "XMR"): ?>
-                <div class="stat-row"><span>1 block</span><span><?= $fastfees ?></span></div>
-                <div class="stat-row"><span>6 blocks</span><span><?= $mediumfees ?></span></div>
-                <div class="stat-row"><span>144 blocks</span><span><?= $slowfees ?></span></div>
+                <div class="stat-row"><span title="Estimated fee rate to get confirmed within the next block (fastest).">1 block</span><span><?= $fastfees ?></span></div>
+                <div class="stat-row"><span title="Estimated fee rate to get confirmed within about 6 blocks (~1 hour).">6 blocks</span><span><?= $mediumfees ?></span></div>
+                <div class="stat-row"><span title="Estimated fee rate to get confirmed within about 144 blocks (~1 day, cheapest).">144 blocks</span><span><?= $slowfees ?></span></div>
                 <?php elseif ($network == "XMR"): ?>
-                <div class="stat-row"><span>Fast</span><span><?= $fastfees ?></span></div>
-                <div class="stat-row"><span>Medium</span><span><?= $mediumfees ?></span></div>
-                <div class="stat-row"><span>Slow</span><span><?= $slowfees ?></span></div>
-                <div class="stat-row"><span>Slowest</span><span><?= $slowestfees ?></span></div>
+                <div class="stat-row"><span title="Higher fee for faster confirmation.">Fast</span><span><?= $fastfees ?></span></div>
+                <div class="stat-row"><span title="Balanced fee for typical confirmation times.">Medium</span><span><?= $mediumfees ?></span></div>
+                <div class="stat-row"><span title="Lower fee with slower confirmation.">Slow</span><span><?= $slowfees ?></span></div>
+                <div class="stat-row"><span title="Lowest fee with the slowest confirmation.">Slowest</span><span><?= $slowestfees ?></span></div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -699,7 +870,7 @@ if ($network == 'BTC') {
         <br/><br/>
         <div class="dashboard-footer">
             <center>
-                <span class="footer-title">Made by <a href="https://tech1k.com">Tech1k</a> | <a href="https://github.com/Tech1k/simple-node-dashboard">Source Code</a> | <a href="https://librenode.com/donate">Donate</a></span>
+                <span class="footer-title">Made by <a href="https://tech1k.com">Tech1k</a> | <a href="https://github.com/Tech1k/simple-node-dashboard">Source Code</a></span>
             </center>
         </div>
     </body>
