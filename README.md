@@ -23,6 +23,52 @@ A lightweight, self-hosted dashboard that displays information from your Bitcoin
 5. Navigate to `index.php` in a web browser of your choice.
 
 
+## Docker
+
+The dashboard can also be run as a container. Configuration is provided through environment variables, so no code changes are needed.
+
+Prebuilt multi-arch images (`linux/amd64` and `linux/arm64`) are published on Docker Hub and the GitHub Container Registry:
+
+```sh
+docker pull techtoshi/simple-node-dashboard
+# or
+docker pull ghcr.io/tech1k/simple-node-dashboard
+
+docker run -d \
+  --name=simple-node-dashboard \
+  --restart=unless-stopped \
+  -p 80:80 \
+  -e NETWORK=XMR \
+  -e NODE_IP=127.0.0.1 \
+  -e RPC_PORT=18081 \
+  techtoshi/simple-node-dashboard
+```
+
+To build the image yourself instead:
+
+```sh
+docker build -t simple-node-dashboard .
+```
+
+Supported environment variables (all optional; the defaults match the configuration at the top of `index.php`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NETWORK` | `CHANGE_ME` | Network to display: `BTC`, `LTC`, or `XMR` |
+| `NODE_IP` | `CHANGE_ME` | Node IP address (usually `127.0.0.1`) |
+| `RPC_PORT` | `CHANGE_ME` | RPC port (BTC: 8332 \| LTC: 9332 \| XMR: 18081) |
+| `RPC_USER` | `CHANGE_ME` | RPC username (not usually needed for XMR) |
+| `RPC_PASS` | `CHANGE_ME` | RPC password (not usually needed for XMR) |
+| `SHOW_NODE_INFO` | `true` | Show the Node Info section |
+| `SHOW_BLOCKCHAIN` | `true` | Show the Blockchain section |
+| `SHOW_MEMPOOL` | `true` | Show the Mempool section |
+| `SHOW_MINING` | `true` | Show the Mining section |
+| `SHOW_TRANSACTIONS` | `true` | Show the Transactions section |
+| `SHOW_FEES` | `true` | Show the Transaction Feerates section |
+| `THEME` | `dark` | Default theme: `dark`, `light`, `nord`, `solarized`, or `dracula` |
+| `SHOW_THEME_SWITCHER` | `true` | Set `false` to lock the theme and hide the switcher |
+
+
 ## Security Notes
 
 - Make sure to protect the dashboard if you’re displaying sensitive node info.

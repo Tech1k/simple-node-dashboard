@@ -1,19 +1,27 @@
 <?php
+// Read a boolean from an environment variable, falling back to a default when unset.
+// Accepts true/false, 1/0, yes/no, on/off.
+function env_bool($name, $default) {
+    $value = getenv($name);
+    return $value === false ? $default : filter_var($value, FILTER_VALIDATE_BOOLEAN);
+}
+
 // Configuration
+// Values may be set directly below, or overridden via environment variables (e.g. for Docker).
 $dashboard_config = [
-    'network' => 'CHANGE_ME', // Supported values: BTC, LTC, or XMR
-    'node_ip' => 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
-    'rpc_port' => 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
-    'rpc_user' => 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
-    'rpc_pass' => 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
-    'show_node_info' => true,
-    'show_blockchain' => true,
-    'show_mempool' => true,
-    'show_mining' => true,
-    'show_transactions' => true,
-    'show_fees' => true,
-    'theme' => 'dark', // Default theme: dark, light, nord, solarized, or dracula
-    'show_theme_switcher' => true, // Set false to lock the theme above and hide the dropdown
+    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // Supported values: BTC, LTC, or XMR
+    'node_ip' => getenv('NODE_IP') ?: 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
+    'rpc_port' => getenv('RPC_PORT') ?: 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
+    'rpc_user' => getenv('RPC_USER') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
+    'rpc_pass' => getenv('RPC_PASS') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
+    'show_node_info' => env_bool('SHOW_NODE_INFO', true),
+    'show_blockchain' => env_bool('SHOW_BLOCKCHAIN', true),
+    'show_mempool' => env_bool('SHOW_MEMPOOL', true),
+    'show_mining' => env_bool('SHOW_MINING', true),
+    'show_transactions' => env_bool('SHOW_TRANSACTIONS', true),
+    'show_fees' => env_bool('SHOW_FEES', true),
+    'theme' => getenv('THEME') ?: 'dark', // Default theme: dark, light, nord, solarized, or dracula
+    'show_theme_switcher' => env_bool('SHOW_THEME_SWITCHER', true), // Set false to lock the theme above and hide the dropdown
 ];
 
 $network = strtoupper($dashboard_config['network']);
