@@ -9,7 +9,7 @@ function env_bool($name, $default) {
 // Configuration
 // Values may be set directly below, or overridden via environment variables (e.g. for Docker).
 $dashboard_config = [
-    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // Supported values: BTC, LTC, or XMR
+    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // BTC, LTC, XMR, or a custom Bitcoin Core-compatible ticker (see $networks below)
     'node_ip' => getenv('NODE_IP') ?: 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
     'rpc_port' => getenv('RPC_PORT') ?: 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
     'rpc_user' => getenv('RPC_USER') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
@@ -33,22 +33,43 @@ $show_theme_switcher = $dashboard_config['show_theme_switcher'] ?? true;
 $errors = [];
 
 
-// RPC URL Construction
-switch ($network) {
-    case 'BTC':
-        $coin = "Bitcoin";
-        $url_schema = "http://{$dashboard_config['node_ip']}:{$dashboard_config['rpc_port']}";
-        break;
-    case 'LTC':
-        $coin = "Litecoin";
-        $url_schema = "http://{$dashboard_config['node_ip']}:{$dashboard_config['rpc_port']}";
-        break;
-    case 'XMR':
-        $coin = "Monero";
-        $url_schema = "http://{$dashboard_config['node_ip']}:{$dashboard_config['rpc_port']}/json_rpc";
-        break;
-    default:
-        die("Configuration error: 'network' must be BTC, LTC, or XMR.");
+// Network profiles. Bitcoin Core-compatible coins all share the 'bitcoin' family and
+// differ only in a few parameters, so adding one is just another entry here. Monero is
+// a one-off ('monero' family) since its RPC and economics are unlike Bitcoin's.
+$networks = [
+    'BTC' => ['name' => 'Bitcoin',  'family' => 'bitcoin', 'unit' => 'BTC', 'halving_interval' => 210000, 'initial_subsidy' => 50, 'fee_unit' => 'sat/vB', 'decimals' => 8],
+    'LTC' => ['name' => 'Litecoin', 'family' => 'bitcoin', 'unit' => 'LTC', 'halving_interval' => 840000, 'initial_subsidy' => 50, 'fee_unit' => 'lit/vB', 'decimals' => 8],
+    'XMR' => ['name' => 'Monero',   'family' => 'monero',  'unit' => 'XMR'],
+];
+
+// A custom Bitcoin Core-compatible network can be added as an entry above, or defined via
+// environment variables (handy for Docker): set NETWORK to its ticker plus any CUSTOM_* vars.
+$custom_defined = getenv('CUSTOM_NAME') || getenv('CUSTOM_UNIT') || getenv('CUSTOM_HALVING_INTERVAL')
+    || getenv('CUSTOM_INITIAL_SUBSIDY') || getenv('CUSTOM_FEE_UNIT') || getenv('CUSTOM_DECIMALS');
+if (!isset($networks[$network]) && $custom_defined) {
+    $networks[$network] = [
+        'name'             => getenv('CUSTOM_NAME') ?: $network,
+        'family'           => 'bitcoin',
+        'unit'             => getenv('CUSTOM_UNIT') ?: $network,
+        'halving_interval' => (int) (getenv('CUSTOM_HALVING_INTERVAL') ?: 210000),
+        'initial_subsidy'  => (float) (getenv('CUSTOM_INITIAL_SUBSIDY') ?: 50),
+        'fee_unit'         => getenv('CUSTOM_FEE_UNIT') ?: 'sat/vB',
+        'decimals'         => getenv('CUSTOM_DECIMALS') !== false ? (int) getenv('CUSTOM_DECIMALS') : 8,
+    ];
+}
+
+if (!isset($networks[$network])) {
+    die("Configuration error: unknown network '" . htmlspecialchars($network) . "'. Use BTC, LTC, or XMR, add an entry to \$networks, or define a custom coin with the CUSTOM_* environment variables.");
+}
+
+$profile = $networks[$network];
+$coin = $profile['name'];
+$family = $profile['family'];
+
+// RPC URL Construction (Monero uses a /json_rpc endpoint)
+$url_schema = "http://{$dashboard_config['node_ip']}:{$dashboard_config['rpc_port']}";
+if ($family === 'monero') {
+    $url_schema .= "/json_rpc";
 }
 
 
@@ -190,8 +211,8 @@ $ttlOverrides = [
 ];
 
 
-// Fetch info based on network
-if ($network == 'BTC') {
+// Fetch info based on network family
+if ($family === 'bitcoin') {
     if ($dashboard_config['show_blockchain']) {
         $blockinfo = call_rpc_cached('getblockchaininfo', [], $dashboard_config, $url_schema, $ttlOverrides);
         
@@ -224,7 +245,7 @@ if ($network == 'BTC') {
         if ($mempoolinfo && is_array($mempoolinfo)) {
             $mempooltxns = number_format($mempoolinfo['size'] ?? 0);
             $mempoolsize = format_bytes($mempoolinfo['bytes'] ?? 0);
-            $totalfees   = sprintf('%.8f', $mempoolinfo['total_fee'] ?? 0) . " BTC";
+            $totalfees   = sprintf('%.' . ($profile['decimals'] ?? 8) . 'f', $mempoolinfo['total_fee'] ?? 0) . " " . $profile['unit'];
         } else {
             $errors[] = 'Failed to fetch `getmempoolinfo`. RPC call returned null or invalid.';
         }
@@ -240,23 +261,23 @@ if ($network == 'BTC') {
             $blockcount = $blockinfo['blocks'] ?? 0;
     
             $currentsupply = 0.0;
-            $halvingInterval = 210000;
-            $initialSubsidy = 50.0;
+            $halvingInterval = $profile['halving_interval'];
+            $initialSubsidy = $profile['initial_subsidy'];
             $lastHeight = $blockcount - 1;
             $halvings = floor($lastHeight / $halvingInterval);
-    
+
             for ($i = 0; $i <= $halvings; $i++) {
-                $subsidy = $initialSubsidy / pow(2, $i);
+                $blockSubsidy = $initialSubsidy / pow(2, $i);
                 $start = $i * $halvingInterval;
                 $end = min(($i + 1) * $halvingInterval - 1, $lastHeight);
                 $blocks = $end - $start + 1;
-    
-                $currentsupply += $blocks * $subsidy;
+
+                $currentsupply += $blocks * $blockSubsidy;
             }
-    
-            $currentsupply = number_format($currentsupply, 0) . " BTC\n";
-            $subsidy = 50 / (2 ** $halvings) . " BTC";
-            $nextHalvingBlock = (floor($blockcount / 210000) + 1) * 210000;
+
+            $currentsupply = number_format($currentsupply, 0) . " " . $profile['unit'] . "\n";
+            $subsidy = ($initialSubsidy / (2 ** $halvings)) . " " . $profile['unit'];
+            $nextHalvingBlock = (floor($blockcount / $halvingInterval) + 1) * $halvingInterval;
             $nexthalving = number_format($nextHalvingBlock - $blockcount);
             $retarget = number_format(2016 - ($blockcount % 2016));
         } else {
@@ -265,7 +286,7 @@ if ($network == 'BTC') {
     }
     
     if ($dashboard_config['show_fees']) {
-        $ratename = "sat/vB";
+        $ratename = $profile['fee_unit'];
         $fast = call_rpc_cached('estimatesmartfee', [1], $dashboard_config, $url_schema, $ttlOverrides);
         $medium = call_rpc_cached('estimatesmartfee', [6], $dashboard_config, $url_schema, $ttlOverrides);
         $slow = call_rpc_cached('estimatesmartfee', [144], $dashboard_config, $url_schema, $ttlOverrides);
@@ -307,122 +328,7 @@ if ($network == 'BTC') {
             $errors[] = 'Unable to fetch `getchaintxstats`. RPC returned null or invalid data.';
         }
     }
-} elseif ($network == 'LTC') {
-    if ($dashboard_config['show_blockchain']) {
-        $blockinfo = call_rpc_cached('getblockchaininfo', [], $dashboard_config, $url_schema, $ttlOverrides);
-        
-        if ($blockinfo && is_array($blockinfo)) {
-            $blockcount   = $blockinfo['blocks'] ?? 0;
-            $headercount  = number_format($blockinfo['headers'] ?? 0);
-            $syncprogress = ($blockinfo['verificationprogress'] >= 0.99999) ? '100%' : round($blockinfo['verificationprogress'] * 100) . '%';
-            $chainsize    = round(($blockinfo['size_on_disk'] ?? 0) / 1000000000, 2) . " GB";
-        } else {
-            $errors[] = 'Failed to fetch `getblockchaininfo`. RPC call returned null or invalid.';
-        }
-    }
-    
-    if ($dashboard_config['show_node_info']) {
-        $netinfo = call_rpc_cached('getnetworkinfo', [], $dashboard_config, $url_schema, $ttlOverrides);
-    
-        if ($netinfo && is_array($netinfo) && $blockinfo && is_array($blockinfo)) {
-            $nodeversion  = $netinfo['subversion'] ?? 'N/A';
-            $activechain  = $blockinfo['chain'] ?? 'N/A';
-            $ispruned     = ($blockinfo['pruned'] ?? false) ? 'true' : 'false';
-            $connections  = $netinfo['connections'] ?? 0;
-        } else {
-            $errors[] = 'Failed to fetch `getnetworkinfo` or `getblockchaininfo` for node info.';
-        }
-    }
-    
-    if ($dashboard_config['show_mempool']) {
-        $mempoolinfo = call_rpc_cached('getmempoolinfo', [], $dashboard_config, $url_schema, $ttlOverrides);
-    
-        if ($mempoolinfo && is_array($mempoolinfo)) {
-            $mempooltxns = number_format($mempoolinfo['size'] ?? 0);
-            $mempoolsize = format_bytes($mempoolinfo['bytes'] ?? 0);
-        } else {
-            $errors[] = 'Failed to fetch `getmempoolinfo`. RPC call returned null or invalid.';
-        }
-    }
-    
-    if ($dashboard_config['show_mining']) {
-        $mininginfo = call_rpc_cached('getmininginfo', [], $dashboard_config, $url_schema, $ttlOverrides);
-    
-        if ($mininginfo && is_array($mininginfo) && $blockinfo && is_array($blockinfo)) {
-            $difficulty = number_format($blockinfo['difficulty'] ?? 0);
-            $hashrate = format_hashrate($mininginfo['networkhashps'] ?? 0);
-
-            $blockcount = $blockinfo['blocks'] ?? 0;
-    
-            $currentsupply = 0.0;
-            $halvingInterval = 840000;
-            $initialSubsidy = 50.0;
-            $lastHeight = $blockcount - 1;
-            $halvings = floor($lastHeight / $halvingInterval);
-    
-            for ($i = 0; $i <= $halvings; $i++) {
-                $subsidy = $initialSubsidy / pow(2, $i);
-                $start = $i * $halvingInterval;
-                $end = min(($i + 1) * $halvingInterval - 1, $lastHeight);
-                $blocks = $end - $start + 1;
-    
-                $currentsupply += $blocks * $subsidy;
-            }
-    
-            $currentsupply = number_format($currentsupply, 0) . " LTC\n";
-            $subsidy = 50 / (2 ** $halvings) . " LTC";
-            $nextHalvingBlock = (floor($blockcount / 840000) + 1) * 840000;
-            $nexthalving = number_format($nextHalvingBlock - $blockcount);
-            $retarget = number_format(2016 - ($blockcount % 2016));
-        } else {
-            $errors[] = 'Failed to fetch `getmininginfo` or `getblockchaininfo` for mining section.';
-        }
-    }
-    
-    if ($dashboard_config['show_fees']) {
-        $ratename = "lit/vB";
-        $fast = call_rpc_cached('estimatesmartfee', [1], $dashboard_config, $url_schema, $ttlOverrides);
-        $medium = call_rpc_cached('estimatesmartfee', [6], $dashboard_config, $url_schema, $ttlOverrides);
-        $slow = call_rpc_cached('estimatesmartfee', [144], $dashboard_config, $url_schema, $ttlOverrides);
-    
-        if ($fast && isset($fast['feerate'])) {
-            $fastfees = round($fast['feerate'] * 100000000 / 1000);
-        } else {
-            $errors[] = 'Failed to fetch fast fee estimate.';
-            $fastfees = 'N/A';
-        }
-    
-        if ($medium && isset($medium['feerate'])) {
-            $mediumfees = round($medium['feerate'] * 100000000 / 1000);
-        } else {
-            $errors[] = 'Failed to fetch medium fee estimate.';
-            $mediumfees = 'N/A';
-        }
-    
-        if ($slow && isset($slow['feerate'])) {
-            $slowfees = round($slow['feerate'] * 100000000 / 1000);
-        } else {
-            $errors[] = 'Failed to fetch slow fee estimate.';
-            $slowfees = 'N/A';
-        }
-    }
-
-    if ($dashboard_config['show_transactions']) {
-        $chaintxstats = call_rpc_cached('getchaintxstats', [], $dashboard_config, $url_schema, $ttlOverrides);
-    
-        if ($chaintxstats && is_array($chaintxstats)) {
-            $totaltxns   = number_format($chaintxstats['txcount'] ?? 0);
-            $averagetxns = sprintf('%.2f', $chaintxstats['txrate'] ?? 0);
-            $monthlytxns = number_format($chaintxstats['window_tx_count'] ?? 0);
-        } else {
-            $totaltxns   = 'N/A';
-            $averagetxns = 'N/A';
-            $monthlytxns = 'N/A';
-    
-            $errors[] = 'Unable to fetch `getchaintxstats`. RPC returned null or invalid data.';
-        }
-    }
-} elseif ($network == 'XMR') {
+} elseif ($family === 'monero') {
 
     $ttlOverrides = [
         'get_info' => 30,
@@ -788,7 +694,7 @@ if ($network == 'BTC') {
                 <div class="section-title">Node Info</div>
                 <div class="stat-row"><span title="The version of the node software your node is running.">Version</span><span><?= $nodeversion ?></span></div>
                 <div class="stat-row"><span title="Which network this node is on (e.g. mainnet, testnet).">Chain</span><span><?= $activechain ?></span></div>
-                <?php if ($network !== 'XMR'): ?>
+                <?php if ($family !== 'monero'): ?>
                 <div class="stat-row"><span title="Whether the node deletes old block data to save disk space.">Pruned</span><span><?= $ispruned ?></span></div>
                 <?php endif; ?>
                 <div class="stat-row"><span title="Number of other nodes (peers) this node is connected to.">Connections</span><span><?= $connections ?></span></div>
@@ -800,10 +706,10 @@ if ($network == 'BTC') {
                 <div class="section-title">Blockchain</div>
                 <div class="stat-row"><span title="The number of blocks this node has validated and stored.">Block Height</span><span><?= number_format($blockcount) ?></span></div>
                 <div class="stat-row"><span title="The number of block headers the node is aware of. Higher than block height while still syncing.">Block Headers</span><span><?= $headercount?></span></div>
-                <?php if ($network !== 'XMR'): ?>
+                <?php if ($family !== 'monero'): ?>
                 <div class="stat-row"><span title="How far the node has progressed verifying the blockchain. 100% means fully synced.">Sync Progress</span><span><?= $syncprogress ?></span></div>
                 <?php endif; ?>
-                <?php if ($network == 'XMR'): ?>
+                <?php if ($family === 'monero'): ?>
                 <div class="stat-row"><span title="Whether the node is fully synced with the network.">Synced</span><span><?= $syncprogress ?></span></div>
                 <?php endif; ?>
                 <div class="stat-row"><span title="Disk space currently used by the blockchain data.">Chain Size</span><span><?= $chainsize ?></span></div>
@@ -815,7 +721,7 @@ if ($network == 'BTC') {
                 <div class="section-title">Mempool</div>
                 <div class="stat-row"><span title="Unconfirmed transactions waiting in the mempool to be included in a block.">Pending TX Count</span><span><?= $mempooltxns ?></span></div>
                 <div class="stat-row"><span title="Total size of all unconfirmed transactions currently in the mempool.">Total Size</span><span><?= $mempoolsize ?></span></div>
-                <?php if ($network == 'BTC' || $network == 'XMR'): ?>
+                <?php if (isset($totalfees)): ?>
                 <div class="stat-row"><span title="Combined fees of all unconfirmed transactions in the mempool.">Total Fees</span><span><?= $totalfees ?></span></div>
                 <?php endif; ?>
             </div>
@@ -826,7 +732,7 @@ if ($network == 'BTC') {
                 <div class="section-title">Mining</div>
                 <div class="stat-row"><span title="A measure of how hard it is to mine a new block. Adjusts to keep block times steady.">Difficulty</span><span><?= $difficulty ?></span></div>
                 <div class="stat-row"><span title="Estimated total computing power miners are dedicating to the network.">Hash Rate</span><span><?= $hashrate ?></span></div>
-                <?php if ($network !== "XMR"): ?>
+                <?php if ($family !== 'monero'): ?>
                 <div class="stat-row"><span title="Blocks remaining until the next mining difficulty adjustment (every 2016 blocks).">Blocks till retarget</span><span><?= $retarget ?></span></div>
                 <div class="stat-row"><span title="Blocks remaining until the next halving, when the block reward is cut in half.">Blocks till halving</span><span><?= $nexthalving ?></span></div>
                 <div class="stat-row"><span title="The amount of newly minted coin paid to a miner for finding a block.">Block Reward</span><span><?= $subsidy ?></span></div>
@@ -839,7 +745,7 @@ if ($network == 'BTC') {
                 <div class="section-title">Transactions</div>
                 <div class="stat-row"><span title="The all-time total number of transactions recorded on the blockchain.">Total Transactions</span><span><?= $totaltxns ?></span></div>
                 <div class="stat-row"><span title="The total amount of coin mined into existence so far.">Current Supply</span><span><?= $currentsupply ?></span></div>
-                <?php if ($network !== "XMR"): ?>
+                <?php if ($family !== 'monero'): ?>
                 <div class="stat-row"><span title="Average number of transactions per second over the last 30 days.">Average tx/s (30-days)</span><span><?= $averagetxns ?></span></div>
                 <div class="stat-row"><span title="Number of transactions confirmed in the last 30 days.">30-day transactions</span><span><?= $monthlytxns ?></span></div>
                 <?php endif; ?>
@@ -849,11 +755,11 @@ if ($network == 'BTC') {
         <?php if ($dashboard_config['show_fees']): ?>
             <div class="section">
                 <div class="section-title">Transaction Feerates (<?= $ratename ?>)</div>
-                <?php if ($network !== "XMR"): ?>
+                <?php if ($family !== 'monero'): ?>
                 <div class="stat-row"><span title="Estimated fee rate to get confirmed within the next block (fastest).">1 block</span><span><?= $fastfees ?></span></div>
                 <div class="stat-row"><span title="Estimated fee rate to get confirmed within about 6 blocks (~1 hour).">6 blocks</span><span><?= $mediumfees ?></span></div>
                 <div class="stat-row"><span title="Estimated fee rate to get confirmed within about 144 blocks (~1 day, cheapest).">144 blocks</span><span><?= $slowfees ?></span></div>
-                <?php elseif ($network == "XMR"): ?>
+                <?php elseif ($family === 'monero'): ?>
                 <div class="stat-row"><span title="Higher fee for faster confirmation.">Fast</span><span><?= $fastfees ?></span></div>
                 <div class="stat-row"><span title="Balanced fee for typical confirmation times.">Medium</span><span><?= $mediumfees ?></span></div>
                 <div class="stat-row"><span title="Lower fee with slower confirmation.">Slow</span><span><?= $slowfees ?></span></div>
