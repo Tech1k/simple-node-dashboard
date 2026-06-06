@@ -13,6 +13,7 @@ A lightweight, self-hosted dashboard that displays information from your Bitcoin
 - Light and dark mode with several built-in themes (Dark, Light, Nord, Solarized, Dracula), remembered across visits
 - Configurable default theme, with the option to lock it and hide the switcher for fixed/branded deployments
 - Tooltip explanations for every stat (hover over a stat label)
+- JSON API (`?format=json`) for Home Assistant, Grafana, scripts, and other tools
 
 
 ## Installation
@@ -69,6 +70,10 @@ Supported environment variables (all optional; the defaults match the configurat
 | `THEME` | `dark` | Default theme: `dark`, `light`, `nord`, `solarized`, or `dracula` |
 | `SHOW_THEME_SWITCHER` | `true` | Set `false` to lock the theme and hide the switcher |
 | `REFRESH_SECONDS` | `60` | Auto-refresh interval in seconds (`0` disables auto-refresh) |
+| `ENABLE_JSON` | `true` | Set `false` to disable the `?format=json` API |
+| `SHOW_CONNECT` | `false` | Show a "Connect to this Node" box (for advertising a public node) |
+| `CONNECT_ADDRESS` | _(empty)_ | Public node address shown in that box, e.g. `node.example.com:18089` |
+| `CONNECT_NOTE` | _(empty)_ | Optional note in that box (e.g. a Tor address or usage notes) |
 
 
 ## Custom Networks
@@ -118,6 +123,45 @@ docker run -d -p 80:80 \
 `NETWORK` to one of these and point `RPC_PORT` at the corresponding test daemon (ports above).
 
 Monero is handled as a special case and cannot be used as a template for custom coins.
+
+
+## JSON API & Home Assistant
+
+Append `?format=json` to the dashboard URL for a machine-readable snapshot of the current
+stats, e.g. `http://your-host/index.php?format=json`. Values are raw and unformatted, which
+makes them easy to consume from Home Assistant, Grafana, scripts, or anything else. It exposes
+the same public node data already shown on the dashboard, nothing more.
+
+Example Home Assistant REST sensor (`configuration.yaml`):
+
+```yaml
+sensor:
+  - platform: rest
+    name: Bitcoin Node
+    resource: http://192.168.1.10/index.php?format=json
+    scan_interval: 60
+    value_template: "{{ value_json.block_height }}"
+    json_attributes:
+      - connections
+      - difficulty
+      - network_hashps
+      - mempool_txns
+      - mempool_bytes
+      - verification_progress
+```
+
+The response always includes `network`, `coin`, `unit`, `family`, and `updated` (Unix time).
+The remaining fields depend on the coin family (e.g. `block_height`, `connections`,
+`difficulty`, `network_hashps`, `mempool_txns`, `mempool_bytes`, `mempool_total_fee`,
+`total_transactions`, and fee estimates). Disabled sections or failed RPC calls report `null`.
+
+Monetary amounts (`mempool_total_fee`, Monero `supply`) are in whole coins; fee rates are in
+native units (sat/vB for Bitcoin, piconero/kB for Monero). Very large estimates such as
+`network_hashps` may be rendered in scientific notation, which is still valid JSON.
+
+The endpoint serves only the same public data already shown on the dashboard. To turn it off
+entirely (for example on a public host), set `ENABLE_JSON=false`; `?format=json` then just
+returns the normal dashboard page.
 
 
 ## Security Notes

@@ -23,6 +23,12 @@ $dashboard_config = [
     'theme' => getenv('THEME') ?: 'dark', // Default theme: dark, light, nord, solarized, or dracula
     'show_theme_switcher' => env_bool('SHOW_THEME_SWITCHER', true), // Set false to lock the theme above and hide the dropdown
     'refresh_seconds' => getenv('REFRESH_SECONDS') !== false ? (int) getenv('REFRESH_SECONDS') : 60, // Auto-refresh interval in seconds (0 disables)
+    'enable_json' => env_bool('ENABLE_JSON', true), // Set false to disable the ?format=json API (e.g. for public hosts)
+    // "Connect to this node" box, for advertising a public node. These are operator-provided
+    // public details (not the internal RPC settings above), and only show when an address is set.
+    'show_connect' => env_bool('SHOW_CONNECT', false), // Show the "Connect to this Node" box
+    'connect_address' => getenv('CONNECT_ADDRESS') ?: '', // Public address to advertise, e.g. node.example.com:18089
+    'connect_note' => getenv('CONNECT_NOTE') ?: '', // Optional note shown in the box (e.g. "Restricted RPC" or a Tor address)
 ];
 
 $network = strtoupper($dashboard_config['network']);
@@ -31,6 +37,10 @@ $rpc_password = $dashboard_config['rpc_pass'];
 $theme = $dashboard_config['theme'] ?? 'dark';
 $show_theme_switcher = $dashboard_config['show_theme_switcher'] ?? true;
 $refresh_seconds = max(0, (int) ($dashboard_config['refresh_seconds'] ?? 60));
+$enable_json = $dashboard_config['enable_json'] ?? true;
+$show_connect = ($dashboard_config['show_connect'] ?? false) && ($dashboard_config['connect_address'] ?? '') !== '';
+$connect_address = $dashboard_config['connect_address'] ?? '';
+$connect_note = $dashboard_config['connect_note'] ?? '';
 
 $errors = [];
 
@@ -422,7 +432,68 @@ if ($family === 'bitcoin') {
            $errors[] = 'Failed to fetch Monero fee estimates.';
         }
     }
-    
+
+}
+
+
+// Machine-readable snapshot for JSON consumers (Home Assistant, Grafana, scripts, etc.).
+// Request it with ?format=json. Values are raw/unformatted for easy parsing. The `?? null`
+// guards keep it warning-free when a section is disabled or its RPC call failed.
+$stats = [
+    'network' => $network,
+    'coin'    => $coin,
+    'unit'    => $profile['unit'],
+    'family'  => $family,
+    'updated' => time(),
+];
+
+if ($family === 'bitcoin') {
+    $stats += [
+        'version'               => $netinfo['subversion'] ?? null,
+        'chain'                 => $blockinfo['chain'] ?? null,
+        'pruned'                => $blockinfo['pruned'] ?? null,
+        'connections'           => $netinfo['connections'] ?? null,
+        'block_height'          => $blockinfo['blocks'] ?? null,
+        'headers'               => $blockinfo['headers'] ?? null,
+        'verification_progress' => $blockinfo['verificationprogress'] ?? null,
+        'size_on_disk'          => $blockinfo['size_on_disk'] ?? null,
+        'mempool_txns'          => $mempoolinfo['size'] ?? null,
+        'mempool_bytes'         => $mempoolinfo['bytes'] ?? null,
+        'mempool_total_fee'     => $mempoolinfo['total_fee'] ?? null,
+        'difficulty'            => $blockinfo['difficulty'] ?? null,
+        'network_hashps'        => $mininginfo['networkhashps'] ?? null,
+        'total_transactions'    => $chaintxstats['txcount'] ?? null,
+        'tx_rate'               => $chaintxstats['txrate'] ?? null,
+        'window_tx_count'       => $chaintxstats['window_tx_count'] ?? null,
+        'fees_sat_vb'           => ['fast' => $fastfees ?? null, 'medium' => $mediumfees ?? null, 'slow' => $slowfees ?? null],
+    ];
+} elseif ($family === 'monero') {
+    $stats += [
+        'version'                 => $getinfo['version'] ?? null,
+        'chain'                   => $getinfo['nettype'] ?? null,
+        'connections'             => isset($getinfo['incoming_connections_count'], $getinfo['outgoing_connections_count'])
+                                       ? $getinfo['incoming_connections_count'] + $getinfo['outgoing_connections_count'] : null,
+        'block_height'            => $getinfo['height'] ?? ($block_count['count'] ?? null),
+        'synchronized'            => $getinfo['synchronized'] ?? null,
+        'database_size'           => $getinfo['database_size'] ?? null,
+        'mempool_txns'            => $mempoolinfo['pool_stats']['txs_total'] ?? null,
+        'mempool_bytes'           => $mempoolinfo['pool_stats']['bytes_total'] ?? null,
+        'mempool_total_fee'       => isset($mempoolinfo['pool_stats']['fee_total']) ? $mempoolinfo['pool_stats']['fee_total'] / 1e12 : null,
+        'difficulty'              => $getinfo['difficulty'] ?? null,
+        'total_transactions'      => $getinfo['tx_count'] ?? null,
+        'supply'                  => isset($mininginfo['already_generated_coins']) ? $mininginfo['already_generated_coins'] / 1e12 : null,
+        'fees_per_kb'             => $getfees['fees'] ?? null,
+    ];
+}
+
+if (!empty($errors)) {
+    $stats['errors'] = $errors;
+}
+
+if ($enable_json && ($_GET['format'] ?? '') === 'json') {
+    header('Content-Type: application/json');
+    echo json_encode($stats, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
 }
 
 ?>
@@ -582,6 +653,19 @@ if ($family === 'bitcoin') {
                 text-underline-offset: 3px;
             }
 
+            /* The "Connect to this Node" box spans the full width as a banner above the grid */
+            .section.connect-box {
+                flex: 0 0 100%;
+                max-width: 100%;
+                text-align: center;
+            }
+
+            .section.connect-box .stat-row {
+                justify-content: center;
+                gap: 0.5rem;
+                border-bottom: none;
+            }
+
             .dashboard-header {
                 position: fixed;
                 top: 0;
@@ -688,6 +772,16 @@ if ($family === 'bitcoin') {
 
         <div id="dashboard-content">
         <div class="compact-dashboard<?= $show_theme_switcher ? '' : ' no-switcher' ?>">
+
+        <?php if ($show_connect): ?>
+            <div class="section connect-box">
+                <div class="section-title">Connect to this Node</div>
+                <div class="stat-row"><span title="The public address to point your wallet or client at.">Address</span><span><?= htmlspecialchars($connect_address) ?></span></div>
+                <?php if ($connect_note !== ''): ?>
+                <div class="stat-row"><span title="Additional connection details from the node operator.">Note</span><span><?= htmlspecialchars($connect_note) ?></span></div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
         <?php if ($dashboard_config['show_node_info']): ?>
             <div class="section">
