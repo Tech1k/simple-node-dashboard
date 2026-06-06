@@ -9,9 +9,9 @@ function env_bool($name, $default) {
 // Configuration
 // Values may be set directly below, or overridden via environment variables (e.g. for Docker).
 $dashboard_config = [
-    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // BTC, LTC, XMR, or a custom Bitcoin Core-compatible ticker (see $networks below)
+    'network' => getenv('NETWORK') ?: 'CHANGE_ME', // BTC, LTC, XMR (+ testnets tBTC, tLTC, tXMR, sXMR), or a custom ticker (see $networks below)
     'node_ip' => getenv('NODE_IP') ?: 'CHANGE_ME', // Usually 127.0.0.1 if ran locally
-    'rpc_port' => getenv('RPC_PORT') ?: 'CHANGE_ME', // Default RPC ports: BTC: 8332 | LTC: 9332 | XMR: 18081
+    'rpc_port' => getenv('RPC_PORT') ?: 'CHANGE_ME', // Default RPC ports: BTC 8332 (testnet 18332) | LTC 9332 (testnet 19332) | XMR 18081 (testnet 28081, stagenet 38081)
     'rpc_user' => getenv('RPC_USER') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
     'rpc_pass' => getenv('RPC_PASS') ?: 'CHANGE_ME', // Note: not usually needed for XMR (leave blank if XMR)
     'show_node_info' => env_bool('SHOW_NODE_INFO', true),
@@ -40,6 +40,11 @@ $networks = [
     'BTC' => ['name' => 'Bitcoin',  'family' => 'bitcoin', 'unit' => 'BTC', 'halving_interval' => 210000, 'initial_subsidy' => 50, 'fee_unit' => 'sat/vB', 'decimals' => 8],
     'LTC' => ['name' => 'Litecoin', 'family' => 'bitcoin', 'unit' => 'LTC', 'halving_interval' => 840000, 'initial_subsidy' => 50, 'fee_unit' => 'lit/vB', 'decimals' => 8],
     'XMR' => ['name' => 'Monero',   'family' => 'monero',  'unit' => 'XMR'],
+    // Test networks share their mainnet's RPC and rules; only the node port and display differ.
+    'TBTC' => ['name' => 'Bitcoin Testnet',  'family' => 'bitcoin', 'unit' => 'tBTC', 'halving_interval' => 210000, 'initial_subsidy' => 50, 'fee_unit' => 'sat/vB', 'decimals' => 8],
+    'TLTC' => ['name' => 'Litecoin Testnet', 'family' => 'bitcoin', 'unit' => 'tLTC', 'halving_interval' => 840000, 'initial_subsidy' => 50, 'fee_unit' => 'lit/vB', 'decimals' => 8],
+    'TXMR' => ['name' => 'Monero Testnet',  'family' => 'monero', 'unit' => 'tXMR'],
+    'SXMR' => ['name' => 'Monero Stagenet', 'family' => 'monero', 'unit' => 'sXMR'],
 ];
 
 // A custom Bitcoin Core-compatible network can be added as an entry above, or defined via
@@ -75,23 +80,16 @@ if ($family === 'monero') {
 
 // RPC function
 function call_rpc($method, $params = [], $dashboard_config, $url_schema) {
-    global $errors;
+    global $errors, $networks;
     $rpc_user = $dashboard_config['rpc_user'];
     $rpc_password = $dashboard_config['rpc_pass'];
     $network = strtoupper($dashboard_config['network']);
+    $is_monero = isset($networks[$network]) && $networks[$network]['family'] === 'monero';
 
-    // For Monero non-JSON-RPC endpoints
-    $is_monero_direct = ($network === 'XMR' && !in_array($method, [
-        'get_block_count', 'get_block', 'get_block_header_by_height', 'get_block_header_by_hash',
-        'get_connections', 'get_info', 'get_last_block_header', 'get_peer_list',
-        'get_transaction_pool', 'get_transaction_pool_stats', 'get_transactions',
-        'get_height'
-    ]));
-
-    if ($network === 'XMR' && in_array($method, ['get_transaction_pool_stats'])) {
+    if ($is_monero && in_array($method, ['get_transaction_pool_stats'])) {
         $url = str_replace('/json_rpc', '', $url_schema) . "/$method";
         $payload = json_encode((object)$params);
-    } elseif ($network === 'XMR' && in_array($method, ['get_info'])) {
+    } elseif ($is_monero && in_array($method, ['get_info'])) {
         $url = str_replace('/json_rpc', '', $url_schema) . "/$method";
         $payload = json_encode((object)$params);
     } else {
@@ -372,7 +370,7 @@ if ($family === 'bitcoin') {
         if ($mempoolinfo) {
             $mempooltxns = number_format($mempoolinfo['pool_stats']['txs_total'] ?? 0);
             $mempoolsize = format_bytes($mempoolinfo['pool_stats']['bytes_total'] ?? 0);
-            $totalfees   = number_format(($mempoolinfo['pool_stats']['fee_total'] ?? 0) / 1e12, 6) . " XMR";
+            $totalfees   = number_format(($mempoolinfo['pool_stats']['fee_total'] ?? 0) / 1e12, 6) . " " . $profile['unit'];
         } else {
             $errors[] = 'Failed to fetch Monero mempool info.';
         }
@@ -403,7 +401,7 @@ if ($family === 'bitcoin') {
         $mininginfo = call_rpc_cached('get_miner_data', [], $dashboard_config, $url_schema, $ttlOverrides);
 
         if ($mininginfo) {
-            $currentsupply   = number_format(($mininginfo['already_generated_coins'] ?? 0) / 1000000000000) . " XMR";
+            $currentsupply   = number_format(($mininginfo['already_generated_coins'] ?? 0) / 1000000000000) . " " . $profile['unit'];
         } else {
            $errors[] = 'Failed to fetch Monero mining info.';
         }
@@ -414,10 +412,10 @@ if ($family === 'bitcoin') {
 
         if ($getfees) {
             $ratename = "per kB";
-            $fastfees = number_format(($getfees['fees'][3] ?? 0) / 1000000000000, 12) . " XMR";
-            $mediumfees = number_format(($getfees['fees'][2] ?? 0) / 1000000000000, 12) . " XMR";
-            $slowfees = number_format(($getfees['fees'][1] ?? 0) / 1000000000000, 12) . " XMR";
-            $slowestfees = number_format(($getfees['fees'][0] ?? 0) / 1000000000000, 12) . " XMR";
+            $fastfees = number_format(($getfees['fees'][3] ?? 0) / 1000000000000, 12) . " " . $profile['unit'];
+            $mediumfees = number_format(($getfees['fees'][2] ?? 0) / 1000000000000, 12) . " " . $profile['unit'];
+            $slowfees = number_format(($getfees['fees'][1] ?? 0) / 1000000000000, 12) . " " . $profile['unit'];
+            $slowestfees = number_format(($getfees['fees'][0] ?? 0) / 1000000000000, 12) . " " . $profile['unit'];
         } else {
            $errors[] = 'Failed to fetch Monero fee estimates.';
         }

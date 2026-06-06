@@ -55,9 +55,9 @@ Supported environment variables (all optional; the defaults match the configurat
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NETWORK` | `CHANGE_ME` | Network to display: `BTC`, `LTC`, `XMR`, or a custom ticker (see [Custom Networks](#custom-networks)) |
+| `NETWORK` | `CHANGE_ME` | Network to display: `BTC`, `LTC`, `XMR`, a testnet (`tBTC`, `tLTC`, `tXMR`, `sXMR`), or a custom ticker (see [Custom Networks](#custom-networks)) |
 | `NODE_IP` | `CHANGE_ME` | Node IP address (usually `127.0.0.1`) |
-| `RPC_PORT` | `CHANGE_ME` | RPC port (BTC: 8332 \| LTC: 9332 \| XMR: 18081) |
+| `RPC_PORT` | `CHANGE_ME` | RPC port. Mainnet/testnet: BTC 8332/18332, LTC 9332/19332, XMR 18081/28081 (stagenet 38081) |
 | `RPC_USER` | `CHANGE_ME` | RPC username (not usually needed for XMR) |
 | `RPC_PASS` | `CHANGE_ME` | RPC password (not usually needed for XMR) |
 | `SHOW_NODE_INFO` | `true` | Show the Node Info section |
@@ -112,6 +112,9 @@ docker run -d -p 80:80 \
 > The supply, block-reward, and next-halving stats assume a Bitcoin-style halving
 > schedule. Coins with a different emission model will show those particular figures
 > inaccurately; block height, sync status, mempool, fees, and hashrate are unaffected.
+
+**Test networks** are built in: `tBTC`, `tLTC`, `tXMR`, and `sXMR` (Monero stagenet). Set
+`NETWORK` to one of these and point `RPC_PORT` at the corresponding test daemon (ports above).
 
 Monero is handled as a special case and cannot be used as a template for custom coins.
 
