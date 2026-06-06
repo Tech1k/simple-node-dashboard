@@ -22,6 +22,7 @@ $dashboard_config = [
     'show_fees' => env_bool('SHOW_FEES', true),
     'theme' => getenv('THEME') ?: 'dark', // Default theme: dark, light, nord, solarized, or dracula
     'show_theme_switcher' => env_bool('SHOW_THEME_SWITCHER', true), // Set false to lock the theme above and hide the dropdown
+    'refresh_seconds' => getenv('REFRESH_SECONDS') !== false ? (int) getenv('REFRESH_SECONDS') : 60, // Auto-refresh interval in seconds (0 disables)
 ];
 
 $network = strtoupper($dashboard_config['network']);
@@ -29,6 +30,7 @@ $rpc_user = $dashboard_config['rpc_user'];
 $rpc_password = $dashboard_config['rpc_pass'];
 $theme = $dashboard_config['theme'] ?? 'dark';
 $show_theme_switcher = $dashboard_config['show_theme_switcher'] ?? true;
+$refresh_seconds = max(0, (int) ($dashboard_config['refresh_seconds'] ?? 60));
 
 $errors = [];
 
@@ -432,7 +434,7 @@ if ($family === 'bitcoin') {
         <meta charset="utf-8">
         <title><?= $coin ?> Node Dashboard</title>
         <meta name="description" content="A simple node dashboard for your <?= $coin ?> node.">
-        <meta http-equiv="refresh" content="60">
+        <?php if ($refresh_seconds > 0): ?><noscript><meta http-equiv="refresh" content="<?= (int) $refresh_seconds ?>"></noscript><?php endif; ?>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             /* Theme palettes, applied via the data-theme attribute on <html>.
@@ -638,9 +640,8 @@ if ($family === 'bitcoin') {
         <?php if ($show_theme_switcher): ?>
         <script>
             // Apply the visitor's saved theme before paint to avoid a flash of the
-            // server-rendered default. The page auto-refreshes every 60s, so this
-            // runs on every load. Only active when the switcher is enabled — with it
-            // hidden, the configured theme is final and localStorage is ignored.
+            // server-rendered default, on every load. Only active when the switcher is
+            // enabled; with it hidden, the configured theme is final and localStorage is ignored.
             (function () {
                 try {
                     var saved = localStorage.getItem('snd-theme');
@@ -656,7 +657,7 @@ if ($family === 'bitcoin') {
         <div class="dashboard-header">
         <span class="header-title"><?= $coin ?> Node Dashboard</span>
             <br/>
-            <span>Updated:</span> <?= date("H:i:s") ?> UTC — <span>Auto-refresh: 60s</span>
+            <span>Updated:</span> <span id="updated" data-ts="<?= time() ?>"><?= gmdate("H:i:s") ?> UTC</span> | <span>Auto-refresh: <?= $refresh_seconds > 0 ? (int) $refresh_seconds . 's' : 'off' ?></span>
             <?php if ($show_theme_switcher): ?>
             <div class="theme-switcher">
                 Theme:
@@ -685,6 +686,7 @@ if ($family === 'bitcoin') {
         </script>
         <?php endif; ?>
 
+        <div id="dashboard-content">
         <div class="compact-dashboard<?= $show_theme_switcher ? '' : ' no-switcher' ?>">
 
         <?php if ($dashboard_config['show_node_info']): ?>
@@ -778,6 +780,7 @@ if ($family === 'bitcoin') {
                 </ul>
             </div>
         <?php endif; ?>
+        </div>
 
         <br/><br/>
         <div class="dashboard-footer">
@@ -785,5 +788,40 @@ if ($family === 'bitcoin') {
                 <span class="footer-title">Made by <a href="https://tech1k.com">Tech1k</a> | <a href="https://github.com/Tech1k/simple-node-dashboard">Source Code</a></span>
             </center>
         </div>
+        <script>
+            // Render the "Updated" time in the viewer's local timezone, and refresh the
+            // dashboard in place every 60s (no full-page reload, so scroll and theme persist).
+            (function () {
+                var intervalMs = <?= (int) $refresh_seconds ?> * 1000;
+
+                function renderTime() {
+                    var el = document.getElementById('updated');
+                    if (!el || !el.dataset.ts) return;
+                    var d = new Date(el.dataset.ts * 1000);
+                    el.textContent = d.toLocaleTimeString([], {
+                        hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+                    });
+                }
+
+                async function refresh() {
+                    try {
+                        var res = await fetch(location.href, { cache: 'no-store' });
+                        if (!res.ok) return;
+                        var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+                        var fresh = doc.getElementById('dashboard-content');
+                        var current = document.getElementById('dashboard-content');
+                        if (fresh && current) current.replaceWith(fresh);
+
+                        var freshTs = doc.getElementById('updated');
+                        var liveTs = document.getElementById('updated');
+                        if (freshTs && liveTs) liveTs.dataset.ts = freshTs.dataset.ts;
+                        renderTime();
+                    } catch (e) {}
+                }
+
+                renderTime();
+                if (intervalMs > 0) setInterval(refresh, intervalMs);
+            })();
+        </script>
     </body>
 </html>

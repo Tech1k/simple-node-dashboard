@@ -68,6 +68,7 @@ Supported environment variables (all optional; the defaults match the configurat
 | `SHOW_FEES` | `true` | Show the Transaction Feerates section |
 | `THEME` | `dark` | Default theme: `dark`, `light`, `nord`, `solarized`, or `dracula` |
 | `SHOW_THEME_SWITCHER` | `true` | Set `false` to lock the theme and hide the switcher |
+| `REFRESH_SECONDS` | `60` | Auto-refresh interval in seconds (`0` disables auto-refresh) |
 
 
 ## Custom Networks
