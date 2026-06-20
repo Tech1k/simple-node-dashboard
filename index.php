@@ -504,6 +504,8 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
     <head>
         <meta charset="utf-8">
         <title><?= $coin ?> Node Dashboard</title>
+        <!-- Embedded SVG favicon (connected-nodes glyph), so no separate file is needed -->
+        <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%236b86ff'/><g stroke='%23fff' stroke-width='2.4' stroke-linecap='round' fill='%23fff'><path d='M16 16 16 7M16 16 8.5 21M16 16 23.5 21'/><circle cx='16' cy='16' r='3.4'/><circle cx='16' cy='7' r='2.8'/><circle cx='8.5' cy='21' r='2.8'/><circle cx='23.5' cy='21' r='2.8'/></g></svg>">
         <meta name="description" content="A simple node dashboard for your <?= $coin ?> node.">
         <?php if ($refresh_seconds > 0): ?><noscript><meta http-equiv="refresh" content="<?= (int) $refresh_seconds ?>"></noscript><?php endif; ?>
         <meta name="viewport" content="width=device-width, initial-scale=1">

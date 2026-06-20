@@ -2,6 +2,8 @@
 
 A lightweight, self-hosted dashboard that displays information from your Bitcoin, Litecoin, Monero, or other Bitcoin Core-compatible node.
 
+![Simple Node Dashboard](.github/screenshot.png)
+
 
 ## Demos
 
