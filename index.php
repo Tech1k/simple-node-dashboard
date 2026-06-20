@@ -510,33 +510,38 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
         <style>
             /* Theme palettes, applied via the data-theme attribute on <html>.
                The default (no attribute) matches the dark theme. */
+            /* Shared (non-color) design tokens, available to every theme via :root */
+            :root {
+                --radius: 10px;
+            }
+
             :root,
             html[data-theme="dark"] {
-                --bg: #0e0e0e;
-                --text: #cfcfcf;
-                --section-bg: #121212;
-                --section-border: #222;
-                --title-color: #fff;
-                --title-border: #333;
-                --label-color: #aaa;
-                --row-border: #2a2a2a;
-                --header-bg: #1a1a1a;
-                --header-text: #fff;
-                --link: #6ea8fe;
+                --bg: #14161b;
+                --text: #e6e8ec;
+                --section-bg: #1c1f27;
+                --section-border: #2a2e37;
+                --title-color: #ffffff;
+                --title-border: #2a2e37;
+                --label-color: #9aa0ab;
+                --row-border: #262a33;
+                --header-bg: #1c1f27;
+                --header-text: #e6e8ec;
+                --link: #6b86ff;
             }
 
             html[data-theme="light"] {
-                --bg: #f4f4f4;
-                --text: #1c1c1c;
+                --bg: #f7f7f7;
+                --text: #1b1d23;
                 --section-bg: #ffffff;
-                --section-border: #d8d8d8;
-                --title-color: #000;
-                --title-border: #cccccc;
-                --label-color: #555;
-                --row-border: #e2e2e2;
+                --section-border: #e5e5e5;
+                --title-color: #14161b;
+                --title-border: #e8e8e8;
+                --label-color: #6b6b6b;
+                --row-border: #eeeeee;
                 --header-bg: #ffffff;
-                --header-text: #000;
-                --link: #0d6efd;
+                --header-text: #14161b;
+                --link: #4561eb;
             }
 
             html[data-theme="nord"] {
@@ -585,19 +590,39 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
                 margin: 0;
                 background: var(--bg);
                 color: var(--text);
-                font-family: 'Courier New', monospace;
-                font-size: 18px;
+                font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                font-size: 16px;
+                line-height: 1.5;
                 padding: 1rem;
+                -webkit-font-smoothing: antialiased;
             }
 
             a {
                 color: var(--link);
+                text-decoration: none;
+                transition: color 0.15s ease;
+            }
+
+            a:hover {
+                text-decoration: underline;
+            }
+
+            ::selection {
+                background: var(--link);
+                color: #fff;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--link);
+                outline-offset: 2px;
             }
 
             .section {
                 background: var(--section-bg);
                 border: 1px solid var(--section-border);
-                padding: 0.5rem 1rem;
+                border-radius: var(--radius);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+                padding: 0.75rem 1rem;
                 box-sizing: border-box;
                 flex: 0 0 calc(33.333% - 1rem); /* limit to 3 per row */
                 max-width: calc(33.333% - 1rem);
@@ -628,27 +653,42 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
             }
 
             .section-title {
-                font-weight: bold;
+                font-weight: 600;
                 color: var(--title-color);
                 margin-bottom: 0.5rem;
                 border-bottom: 1px solid var(--title-border);
-                padding-bottom: 0.25rem;
+                padding-bottom: 0.4rem;
+                font-size: 0.95rem;
+                letter-spacing: 0.02em;
             }
 
             .stat-row {
                 display: flex;
                 justify-content: space-between;
-                padding: 0.15rem 0;
-                border-bottom: 1px dotted var(--row-border);
+                gap: 1rem;
+                padding: 0.3rem 0;
+                border-bottom: 1px solid var(--row-border);
+            }
+
+            .stat-row:last-child {
+                border-bottom: none;
             }
 
             .stat-row span:first-child {
                 color: var(--label-color);
             }
 
-            /* Stats with a tooltip explanation get a help cursor and a subtle hint underline */
+            /* Values render in a mono stack for clean, aligned digits */
+            .stat-row span:last-child {
+                font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+            }
+
+            /* Tooltip labels get a help cursor; the hint underline appears on hover only */
             .stat-row span[title] {
                 cursor: help;
+            }
+
+            .stat-row span[title]:hover {
                 text-decoration: underline dotted;
                 text-underline-offset: 3px;
             }
@@ -673,11 +713,12 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
                 width: 100%;
                 background-color: var(--header-bg);
                 color: var(--header-text);
-                padding: 8px 12px;
-                font-size: 15px;
-                font-weight: bold;
+                padding: 10px 12px;
+                font-size: 14px;
+                font-weight: 600;
                 z-index: 1000;
-                box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+                border-bottom: 1px solid var(--section-border);
+                box-shadow: 0 1px 4px rgba(0,0,0,0.15);
                 text-align: center;
                 word-break: break-word;
             }
@@ -706,13 +747,13 @@ if ($enable_json && ($_GET['format'] ?? '') === 'json') {
             }
 
             .theme-switcher select {
-                background: var(--section-bg);
+                background: var(--bg);
                 color: var(--text);
                 border: 1px solid var(--section-border);
                 font-family: inherit;
                 font-size: 13px;
-                padding: 2px 6px;
-                border-radius: 3px;
+                padding: 3px 8px;
+                border-radius: 6px;
             }
 
             .dashboard-footer {

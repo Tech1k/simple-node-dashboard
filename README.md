@@ -3,6 +3,16 @@
 A lightweight, self-hosted dashboard that displays information from your Bitcoin, Litecoin, Monero, or other Bitcoin Core-compatible node.
 
 
+## Demos
+
+Live instances on Monero, Litecoin, and Bitcoin test networks:
+
+- [Monero Stagenet](https://cypherfaucet.com/status/xmr-stagenet)
+- [Monero Testnet](https://cypherfaucet.com/status/xmr-testnet)
+- [Litecoin Testnet](https://cypherfaucet.com/status/ltc-testnet)
+- [Bitcoin Testnet](https://cypherfaucet.com/status/btc-testnet)
+
+
 ## Features
 
 - Clean display of essential node and network statistics
